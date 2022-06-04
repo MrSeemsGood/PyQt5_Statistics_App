@@ -1,1 +1,2 @@
-# PyQt5_Statistics_App
+# App for statistics analysis using PyQt5, Pandas and others
+
