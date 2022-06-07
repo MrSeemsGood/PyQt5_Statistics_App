@@ -1,13 +1,16 @@
 from ctypes import alignment
 from multiprocessing.sharedctypes import Value
-from PyQt5.QtCore import Qt, QTimer, QTime, QLocale
-from PyQt5.QtGui import QDoubleValidator, QIntValidator, QFont
+from PyQt5.QtCore import Qt, QTimer, QTime, QLocale, QRect
+from PyQt5.QtGui import QDoubleValidator, QIntValidator, QFont, QIcon
 from PyQt5.QtWidgets import *
 
 import os.path
 import pandas as pd
 import numpy as np
 from statsmodels.formula.api import ols
+
+main_window_base_size = (10, 10)
+main_window_hidden_size = (25, 15)
 
 def getCutoffString(t):
     t = str(t)
@@ -37,24 +40,67 @@ class MainWindow(QWidget):
         self.labels = self.uiobjects.get("lbl")
         self.buttons = self.uiobjects.get("btn")
 
+        self.vl = QVBoxLayout()
+
         self.buttons.append(QPushButton("Open xlsx"))
         self.buttons.append(QPushButton("Multiple Regression"))
+        for b in self.buttons:
+            b.setFixedSize(160, 40)
+            self.vl.addWidget(b, Qt.AlignLeft)
 
-        self.grid = QGridLayout()
-        self.tablePreview = [[QLineEdit("") for _ in range(13)] for _ in range(23)]    #preview is 23x13 (22x13 without headers)
+        self.tabs = []
+        self.initPreviewUI()
 
-        self.grid.addWidget(self.buttons[0], 1, 1, Qt.AlignLeft)
-        self.grid.addWidget(self.buttons[1], 2, 1, Qt.AlignLeft)
+        self.tabs.append(self.tablePreview)
+        self.vl.addWidget(self.tablePreview)
 
-        for x in range(2, 15):
-            for y in range(2, 25):
-                lbl = self.tablePreview[y - 2][x - 2]
-                lbl.setStyleSheet("border-style: solid; border-width: 1px; border-color: black;")
-                lbl.setFixedSize(80, (60 if y == 2 else 30))
-                self.grid.addWidget(lbl, y, x)
+        self.setLayout(self.vl)
+
+    def initPreviewUI(self):
+        self.tablePreview = QScrollArea()
+        self.prevWidget = QWidget()
+        self.scrollGrid = QGridLayout()
+        self.clearTablePreview()
+        self.scrollGrid.setSpacing(0)
         
-        self.grid.setSpacing(0)
-        self.setLayout(self.grid)
+        self.prevWidget.setLayout(self.scrollGrid)
+
+        self.tablePreview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.tablePreview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.tablePreview.setWidgetResizable(True)
+        self.tablePreview.setWidget(self.prevWidget)
+
+    def fillTablePreview(self, d):
+        self.clearTablePreview()
+        h, w = d.shape
+
+        for x in range(w):
+            for y in range(h + 1):
+                if y == 0:
+                    lb = QLineEdit(getCutoffString(d.columns[x]))
+                else:
+                    lb = QLineEdit(getCutoffString(d.iloc[y - 1, x]))
+                lb.setStyleSheet("border-style: solid; border-width: 1px; border-color: black;")
+                lb.setFixedSize(100, 35)
+                self.scrollGrid.addWidget(lb, y, x)
+
+        self.data = d
+
+    def clearTablePreview(self):
+        # method taken from SO: https://stackoverflow.com/questions/4528347/clear-all-widgets-in-a-layout-in-pyqt
+        for i in reversed(range(self.scrollGrid.count())): 
+            widgetToRemove = self.scrollGrid.itemAt(i).widget()
+            # remove it from the layout list
+            self.scrollGrid.removeWidget(widgetToRemove)
+            # remove it from the gui
+            widgetToRemove.setParent(None)
+        #
+
+        for id in range(100):
+            lb = QLineEdit("")
+            lb.setStyleSheet("border-style: solid; border-width: 1px; border-color: black;")
+            lb.setFixedSize(100, 35)
+            self.scrollGrid.addWidget(lb, id // 10, id % 10)
 
     def initConnects(self):
         self.buttons[0].clicked.connect(self.preXlsxOpen)
@@ -69,31 +115,21 @@ class MainWindow(QWidget):
             chooseVariablesWindow.comboBox.addItems(self.data.columns)
             chooseVariablesWindow.show()
         except AttributeError:
-            pass
+            qb = QMessageBox(self)
+            qb.setIcon(QMessageBox.Warning)
+            qb.setText("No table found in preview; load data before performing analysis!")
+            qb.setWindowTitle("Warning")
 
-    def fillTablePreview(self, d):
-        self.clearTablePreview()
-        h, w = d.shape
-        h = min(h, 23)
-        w = min(w, 13)
-
-        for x in range(w):
-            self.tablePreview[0][x].setText(getCutoffString(d.columns[x]))
-            for y in range(h - 1):
-                self.tablePreview[y + 1][x].setText(getCutoffString(d.iloc[y, x]))
-        self.data = d
-
-    def clearTablePreview(self):
-        for x in range(13):
-            for y in range(23):
-                self.tablePreview[y][x].setText("")
-        self.data = None
+            qb.exec_()
 
     def buildRegression(self, x, y):
         formula = "{} ~ {}".format(y, "+".join(x))
         model = ols(formula = formula, data = self.data).fit()
-        #print(model.summary())
+        print(model.summary())
         #TODO make it so that it's visible in the app
+
+
+    
 
 
 class PreXlsxOpenWindow(QWidget):
@@ -116,8 +152,8 @@ class PreXlsxOpenWindow(QWidget):
         self.sheetInput = QLineEdit("")
         self.rownamesYN = QCheckBox("Table contains row names")
         self.rownamesYN.setChecked(True)
-        self.openButton = QPushButton("Open")
-        self.openButton.setFixedSize(80, 30)
+        self.openButton = QPushButton("Choose File...")
+        self.openButton.setFixedSize(120, 30)
 
         self.hlayouts[0].addWidget(self.sheetLabel, Qt.AlignLeft)
         self.hlayouts[0].addWidget(self.sheetInput, Qt.AlignRight)
@@ -155,15 +191,13 @@ class ChooseVariablesWindow(QWidget):
     def __init__(self):
         super().__init__()
         
-        self.choice = list()
-        
         self.initAppear()
         self.initUI()
         self.initConnects()
 
     def initAppear(self):
         self.setWindowTitle("Choose Variables")
-        self.resize(400, 400)
+        self.resize(250, 400)
         self.move(400, 300)
 
     def initUI(self):
@@ -188,9 +222,16 @@ class ChooseVariablesWindow(QWidget):
         self.performButton.clicked.connect(self.perform)
 
     def perform(self):
-        mainWindow.buildRegression(x = [el.strip() for el in self.xLineEdit.text().split(',')], y = self.comboBox.currentText())
-        self.hide()
+        if self.xLineEdit.text() == "":
+            qb = QMessageBox(self)
+            qb.setIcon(QMessageBox.Warning)
+            qb.setText("Choose independent variables!")
+            qb.setWindowTitle("Warning")
 
+            qb.exec_()
+        else:
+            mainWindow.buildRegression(x = [el.strip() for el in self.xLineEdit.text().split(',')], y = self.comboBox.currentText())
+            self.hide()
 
 
 app = QApplication([])
