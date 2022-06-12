@@ -12,12 +12,12 @@ from statsmodels.formula.api import ols
 main_window_base_size = (10, 10)
 main_window_hidden_size = (25, 15)
 
-def getCutoffString(t):
-    t = str(t)
-    if len(t) <= 12:
+def getCutoffString(t, length=15):
+    t = str(t).strip()
+    if len(t) <= length:
         return t
     else:
-        return t[:9] + '...'
+        return t[:length - min(3, len(t) - length)] + '...'
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -34,44 +34,53 @@ class MainWindow(QWidget):
         self.move(200, 100)
 
     def initUI(self):
-        self.uiobjects = {"lbl" : list(),
-                          "btn" : list()}
-
-        self.labels = self.uiobjects.get("lbl")
-        self.buttons = self.uiobjects.get("btn")
-
         self.vl = QVBoxLayout()
+        self.hl = QHBoxLayout()
 
-        self.buttons.append(QPushButton("Open xlsx"))
-        self.buttons.append(QPushButton("Multiple Regression"))
+        self.buttons = (QPushButton("Open xlsx"), QPushButton("Analysis"))
         for b in self.buttons:
             b.setFixedSize(160, 40)
-            self.vl.addWidget(b, Qt.AlignLeft)
+            self.hl.addWidget(b, alignment=Qt.AlignLeft)
 
         self.tabs = []
-        self.initPreviewUI()
+        self.tabWindow = QTabWidget()
+        self.addTab()
 
-        self.tabs.append(self.tablePreview)
-        self.vl.addWidget(self.tablePreview)
-
+        self.vl.addLayout(self.hl)
+        self.vl.addWidget(self.tabWindow)
         self.setLayout(self.vl)
 
-    def initPreviewUI(self):
-        self.tablePreview = QScrollArea()
-        self.prevWidget = QWidget()
-        self.scrollGrid = QGridLayout()
-        self.clearTablePreview()
-        self.scrollGrid.setSpacing(0)
-        
-        self.prevWidget.setLayout(self.scrollGrid)
+    def addTab(self, tabName = "New Tab", data = None, setFocus = True):
+        newFrame = QFrame()
+        newVLayout = QVBoxLayout()
+        newScrollArea = QScrollArea()
+        newWidget = QWidget()
+        newGrid = QGridLayout()
 
-        self.tablePreview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.tablePreview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.tablePreview.setWidgetResizable(True)
-        self.tablePreview.setWidget(self.prevWidget)
+        if data is None:
+            self.clearGrid(newGrid)
+        else:
+            #fill new tab with data
+            self.fillGrid(data, newGrid)
 
-    def fillTablePreview(self, d):
-        self.clearTablePreview()
+        newGrid.setSpacing(0)
+        newWidget.setLayout(newGrid)
+        newScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        newScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        newScrollArea.setWidgetResizable(False)
+        newScrollArea.setWidget(newWidget)
+
+        newVLayout.addWidget(newScrollArea)
+        newFrame.setLayout(newVLayout)
+
+        self.tabWindow.addTab(newFrame, tabName)
+        self.tabs.append(newFrame)
+
+        if setFocus:
+            self.tabWindow.setCurrentWidget(newFrame)
+
+    def fillGrid(self, d, grid):
+        self.clearGrid(grid)
         h, w = d.shape
 
         for x in range(w):
@@ -80,18 +89,18 @@ class MainWindow(QWidget):
                     lb = QLineEdit(getCutoffString(d.columns[x]))
                 else:
                     lb = QLineEdit(getCutoffString(d.iloc[y - 1, x]))
-                lb.setStyleSheet("border-style: solid; border-width: 1px; border-color: black;")
+                lb.setStyleSheet("border-style: solid; border-width: 0.75px; border-color: black;")
                 lb.setFixedSize(100, 35)
-                self.scrollGrid.addWidget(lb, y, x)
+                grid.addWidget(lb, y, x)
 
         self.data = d
 
-    def clearTablePreview(self):
+    def clearGrid(self, grid):
         # method taken from SO: https://stackoverflow.com/questions/4528347/clear-all-widgets-in-a-layout-in-pyqt
-        for i in reversed(range(self.scrollGrid.count())): 
-            widgetToRemove = self.scrollGrid.itemAt(i).widget()
+        for i in reversed(range(grid.count())): 
+            widgetToRemove = grid.itemAt(i).widget()
             # remove it from the layout list
-            self.scrollGrid.removeWidget(widgetToRemove)
+            grid.removeWidget(widgetToRemove)
             # remove it from the gui
             widgetToRemove.setParent(None)
         #
@@ -100,7 +109,7 @@ class MainWindow(QWidget):
             lb = QLineEdit("")
             lb.setStyleSheet("border-style: solid; border-width: 1px; border-color: black;")
             lb.setFixedSize(100, 35)
-            self.scrollGrid.addWidget(lb, id // 10, id % 10)
+            grid.addWidget(lb, id // 10, id % 10)
 
     def initConnects(self):
         self.buttons[0].clicked.connect(self.preXlsxOpen)
@@ -124,12 +133,8 @@ class MainWindow(QWidget):
 
     def buildRegression(self, x, y):
         formula = "{} ~ {}".format(y, "+".join(x))
-        model = ols(formula = formula, data = self.data).fit()
-        print(model.summary())
-        #TODO make it so that it's visible in the app
-
-
-    
+        model = ols(formula=formula, data=self.data).fit()
+        self.addTab("Results", pd.concat([pd.DataFrame(model.summary().tables[0]), pd.DataFrame(model.summary().tables[1])]), setFocus=False)
 
 
 class PreXlsxOpenWindow(QWidget):
@@ -147,21 +152,25 @@ class PreXlsxOpenWindow(QWidget):
 
     def initUI(self):
         self.vlayout = QVBoxLayout()
-        self.hlayouts = [QHBoxLayout(), QHBoxLayout(), QHBoxLayout()]
-        self.sheetLabel = QLabel("Specify spreadsheet number or name:")
+        self.hlayout = QHBoxLayout()
+        self.hlayout2 = QHBoxLayout()
+        self.sheetLabel = QLabel("Spreadsheet name/number:")
         self.sheetInput = QLineEdit("")
-        self.rownamesYN = QCheckBox("Table contains row names")
-        self.rownamesYN.setChecked(True)
+        self.rownamesYN = QCheckBox("Add row names (case number)")
+        self.rownamesYN.setChecked(False)
+        self.customNameLabel = QLabel("Custom name (optional):")
+        self.customNameInput = QLineEdit("")
         self.openButton = QPushButton("Choose File...")
         self.openButton.setFixedSize(120, 30)
 
-        self.hlayouts[0].addWidget(self.sheetLabel, Qt.AlignLeft)
-        self.hlayouts[0].addWidget(self.sheetInput, Qt.AlignRight)
-        self.hlayouts[1].addWidget(self.rownamesYN, Qt.AlignLeft)
-        self.hlayouts[2].addWidget(self.openButton, Qt.AlignCenter)
-
-        for i in range(3):
-            self.vlayout.addLayout(self.hlayouts[i])
+        self.hlayout.addWidget(self.sheetLabel, Qt.AlignLeft)
+        self.hlayout.addWidget(self.sheetInput, Qt.AlignRight)
+        self.vlayout.addLayout(self.hlayout)
+        self.hlayout2.addWidget(self.customNameLabel, Qt.AlignLeft)
+        self.hlayout2.addWidget(self.customNameInput, Qt.AlignRight)
+        self.vlayout.addLayout(self.hlayout2)
+        self.vlayout.addWidget(self.rownamesYN, Qt.AlignLeft)
+        self.vlayout.addWidget(self.openButton, Qt.AlignCenter)
 
         self.setLayout(self.vlayout)
 
@@ -183,9 +192,12 @@ class PreXlsxOpenWindow(QWidget):
                     pass
             global data
             data = pd.read_excel(fname, sheet, header = 0)
-            if not self.rownamesYN.isChecked():
+            if self.rownamesYN.isChecked():
                 data = pd.DataFrame({"No. obs" : [i + 1 for i in range(data.shape[0])]}).join(data)
-            mainWindow.fillTablePreview(data)
+
+            name = self.customNameInput.text()
+
+            mainWindow.addTab(fname[fname.find("/") + 1:] if name == "" else name, data, True)
 
 class ChooseVariablesWindow(QWidget):
     def __init__(self):
