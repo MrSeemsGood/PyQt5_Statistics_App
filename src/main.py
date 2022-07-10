@@ -6,7 +6,6 @@ from PyQt5 import sip
 import os.path
 import pandas as pd
 import numpy as np
-import pylab
 from statsmodels.formula.api import ols
 app_g = QGuiApplication([])
 
@@ -53,7 +52,7 @@ def backward_elimination(data, response):
             break
         selected.remove(deletedVar) 
         currentPValues = improvedPValues
-    return ols(formula="{} ~ {}".format(response, " + ".join(sorted(selected))), data=data). fit()
+    return ols(formula="{} ~ {}".format(response, " + ".join(sorted(selected))), data=data).fit()
 
 def warn(warnText="???"):
     qb = QMessageBox()
@@ -103,7 +102,7 @@ class MainWindow(QWidget):
         self.buttons[0].clicked.connect(self.preXlsxOpen)
         self.buttons[1].clicked.connect(self.chooseVariables)
         self.buttons[2].clicked.connect(self.residualAnalysis)
-        self.buttons[3].clicked.connect(self.hcdAnalysis)
+        self.buttons[3].clicked.connect(self.hkdAnalysis)
         self.buttons[4].clicked.connect(lambda: self.addTab(setFocus = True, overwriteCurrent = False))
         self.buttons[5].clicked.connect(self.chooseLanguage)
 
@@ -222,9 +221,11 @@ class MainWindow(QWidget):
         self.addTab("Results", 
                     pd.concat([pd.DataFrame(model.summary().tables[0]), pd.DataFrame(model.summary().tables[1])]), setFocus=True)
 
-    def hcdAnalysis(self):
-        pass
-        #TODO make this window
+    def hkdAnalysis(self):
+        try:
+            self.hcdWindow = HeteroskedasticityAnalysisWindow(parent=self, data=self.data)
+        except AttributeError:
+            warn("Perform regression analysis before analyzing heteroscedasticity!")
 
 app = QApplication([])
 mainWindow = MainWindow()

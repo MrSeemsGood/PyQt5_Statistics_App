@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt
 
 import matplotlib as mpl
+import matplotlib.pyplot
 mpl.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from scipy.stats import norm, kstest 
@@ -12,7 +13,7 @@ from icons import *
 class MplCanvas(FigureCanvasQTAgg):
 
     def __init__(self, parent=None, width=5, height=4, dpi=100):
-        fig = mpl.figure.Figure(figsize=(width, height), dpi=dpi)
+        fig = matplotlib.pyplot.figure(figsize=(width, height), dpi=dpi)
         self.axes = fig.add_subplot(1, 1, 1)
         super(MplCanvas, self).__init__(fig)
 
@@ -30,8 +31,8 @@ class ResidualAnalysisWindow(QWidget):
 
     def initAppear(self):
         self.setWindowTitle("Residuals")
-        self.resize(600, 700)
-        self.move(300, 300)
+        self.resize(700, 700)
+        self.move(200, 200)
 
     def initUI(self):
         self.vlayout = QVBoxLayout()
